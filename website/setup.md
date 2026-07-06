@@ -247,6 +247,21 @@ sudo systemctl restart docker
 
 Then re-run `scripts/check-docker-gpu.sh`.
 
+> **WSL2 + snap Docker.** If `docker run --gpus all ...` fails with
+> `failed to fulfil mount request: open /usr/lib/wsl/lib/libdxcore.so: no
+> such file or directory`, check whether Docker was installed via `snap`
+> (`snap list docker`, or `docker info --format '{{.DockerRootDir}}'` reports
+> a path under `/var/snap/docker/`). Snap's confinement prevents Docker from
+> seeing the GPU library WSL2 injects at `/usr/lib/wsl/lib`, even though the
+> file exists on the host — installing or reconfiguring
+> `nvidia-container-toolkit` will not fix this, since the toolkit isn't the
+> problem. `scripts/check-docker-gpu.sh` detects this combination and calls
+> it out directly. The fix is to remove snap Docker and install the official
+> apt-based Docker Engine instead
+> ([docs.docker.com/engine/install](https://docs.docker.com/engine/install/)),
+> then re-run `nvidia-ctk runtime configure --runtime=docker` and restart
+> Docker.
+
 Safety notes:
 - The app never installs host GPU runtime automatically.
 - The app never edits `.env` automatically.
@@ -304,8 +319,18 @@ docker compose exec odysseus sh -lc 'test -e /dev/kfd && test -d /dev/dri && ls 
 > the CUDA Toolkit at runtime. If Cookbook logs show `Unable to find cudart
 > library`, `Could NOT find CUDAToolkit`, `CUDA Toolkit not found`, or
 > tensors/layers assigned to CPU, that is a Cookbook/llama.cpp build issue —
-> not a Docker passthrough failure. Reinstall the serve engine via
-> **Cookbook → Dependencies** to get a CUDA-enabled build.
+> not a Docker passthrough failure. The default image doesn't include the
+> CUDA Toolkit at all (it's several GB and NVIDIA-only), so Cookbook's
+> from-source llama.cpp build silently falls back to CPU — reinstalling via
+> **Cookbook → Dependencies** alone won't fix this, since there's still no
+> `nvcc`/`libcudart` for it to build against. Rebuild the image with the
+> toolkit included instead:
+> ```bash
+> docker compose build --build-arg INSTALL_CUDA_TOOLKIT=true
+> docker compose up -d
+> ```
+> Then trigger a rebuild of the serve engine (Cookbook → Dependencies, or
+> Stop/Run the model again) so it picks up `nvcc` and links CUDA.
 >
 > The same split applies to AMD/ROCm: seeing `/dev/kfd` and `/dev/dri` inside
 > the container confirms device passthrough, not ROCm userspace or a
