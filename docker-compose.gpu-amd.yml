@@ -21,7 +21,14 @@ services:
     # - e.g. ghcr.io/odysseus-dev/odysseus:1.0.2-7c8070f (X.Y.Z-<sha>) - since
     # :latest and bare :X.Y.Z tags move on every main push.
     image: ${ODYSSEUS_IMAGE:-ghcr.io/odysseus-dev/odysseus:latest}
-    build: .
+    build:
+      context: .
+      args:
+        # Read from .env so a plain `docker compose up -d --build` (no
+        # --build-arg on the command line) still gets the CUDA toolkit,
+        # instead of silently rebuilding CPU-only the next time the
+        # container is recreated.
+        INSTALL_CUDA_TOOLKIT: ${INSTALL_CUDA_TOOLKIT:-false}
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-7011}:7000"
     volumes:
